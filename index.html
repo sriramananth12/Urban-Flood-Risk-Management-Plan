@@ -330,6 +330,7 @@ const SHEETDB_API_URL = 'https://sheetdb.io/api/v1/0iwffdwftyqd9';
 const SHEETDB_SAFE_CELL_LIMIT = 45000; // safety margin under Google Sheets' ~50,000 char/cell ceiling
 const SHEETDB_LARGE_KEYS = new Set(['ganttData']); // still stays on local storage (read-only, never edited via a form)
 const SHEETDB_WORKS_SHEET = 'Works'; // tab name — must exist (can be empty) in your Google Sheet
+const SHEETDB_KV_SHEET = 'KVStore'; // separate tab for components/dprs/timelines/cityProgrammes/meData — must also exist (can be empty)
 const RUNNING_FROM_FILE = location.protocol === 'file:';
 // Browsers block fetch() to any remote host from a file:// page (origin "null"),
 // no matter how the remote API's CORS is configured. Rather than let every
@@ -423,7 +424,7 @@ async function saveWorkItem(work, isNew){
 }
 
 async function sheetDbFind(key){
-  const res = await fetch(`${SHEETDB_API_URL}/search?key=${encodeURIComponent(key)}`);
+  const res = await fetch(sheetDbUrl(`${SHEETDB_API_URL}/search?key=${encodeURIComponent(key)}`, SHEETDB_KV_SHEET));
   if(!res.ok) throw new Error('SheetDB search failed: HTTP '+res.status);
   const rows = await res.json();
   return Array.isArray(rows) && rows.length ? rows[0] : null;
@@ -435,13 +436,13 @@ async function sheetDbSet(key, value){
   }
   const existing = await sheetDbFind(key);
   if(existing){
-    const res = await fetch(`${SHEETDB_API_URL}/key/${encodeURIComponent(key)}`, {
+    const res = await fetch(sheetDbUrl(`${SHEETDB_API_URL}/key/${encodeURIComponent(key)}`, SHEETDB_KV_SHEET), {
       method: 'PATCH', headers: {'Content-Type':'application/json'},
       body: JSON.stringify({ data: { value } })
     });
     if(!res.ok) throw new Error('SheetDB update failed: HTTP '+res.status);
   } else {
-    const res = await fetch(SHEETDB_API_URL, {
+    const res = await fetch(sheetDbUrl(SHEETDB_API_URL, SHEETDB_KV_SHEET), {
       method: 'POST', headers: {'Content-Type':'application/json'},
       body: JSON.stringify({ data: { key, value } })
     });
@@ -450,15 +451,16 @@ async function sheetDbSet(key, value){
   return true;
 }
 async function sheetDbDelete(key){
-  const res = await fetch(`${SHEETDB_API_URL}/key/${encodeURIComponent(key)}`, { method: 'DELETE' });
+  const res = await fetch(sheetDbUrl(`${SHEETDB_API_URL}/key/${encodeURIComponent(key)}`, SHEETDB_KV_SHEET), { method: 'DELETE' });
   return res.ok;
 }
 async function sheetDbList(prefix){
-  const res = await fetch(SHEETDB_API_URL);
+  const res = await fetch(sheetDbUrl(SHEETDB_API_URL, SHEETDB_KV_SHEET));
   if(!res.ok) throw new Error('SheetDB read failed: HTTP '+res.status);
   const rows = await res.json();
   return rows.map(r=>r.key).filter(k=> !prefix || (k && k.startsWith(prefix)));
 }
+
 
 let PERSISTENCE_MODE = 'none'; // 'sheetdb' | 'claude' | 'none' — set in ensureStorage()
 function ensureStorage(){
@@ -926,7 +928,7 @@ function renderMapSvg(){
     const r = c.phase===1?5.5:c.phase===2?4.5:5.5;
     return `<circle class="city-dot" cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${r}" fill="${color}" onclick="gotoCity('${c.id}')"><title>${esc(c.cityName)} — Phase ${c.phase}${c.ndmfShareCr?' — ₹'+c.ndmfShareCr+' Cr':''}</title></circle>`;
   }).join('');
-  return `<svg viewBox="0 0 ${MAP_W} ${MAP_H}" width="100%" height="auto" style="max-width:300px;">
+  return `<svg viewBox="0 0 ${MAP_W} ${MAP_H}" width="100%" style="max-width:300px;">
     <path d="${indiaPath()}" fill="#E4ECEB" stroke="#9FB3AF" stroke-width="1.1"/>
     ${statePaths()}
     ${dots}
@@ -967,7 +969,7 @@ function renderCityStateMap(city){
   const [cx,cy] = projectLocal(city.lat, city.lng, bbox, W, H);
   const color = city.phase===1?'var(--water)':city.phase===2?'var(--green)':'var(--amber)';
   return `
-    <svg viewBox="0 0 ${W} ${H}" width="100%" height="auto" style="max-width:190px;">
+    <svg viewBox="0 0 ${W} ${H}" width="100%" style="max-width:190px;">
       <path d="${path}" fill="#EAF1F0" stroke="#9FB3AF" stroke-width="1.3"/>
       <circle cx="${cx.toFixed(1)}" cy="${cy.toFixed(1)}" r="6" fill="${color}" stroke="#fff" stroke-width="1.6"/>
     </svg>
