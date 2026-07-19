@@ -732,9 +732,10 @@ async function applyMigrationV2(){
   const flag = await loadArr('migrationV2Applied');
   if(flag && flag.applied) return;
   let changed = false;
+  const workIdsToSync = new Set();
   DB.works.forEach(w=>{
     const patch = MIGRATION_PATCH_V2.works[w.id];
-    if(patch){ Object.assign(w, patch); changed = true; }
+    if(patch){ Object.assign(w, patch); changed = true; workIdsToSync.add(w.id); }
   });
   DB.dprs.forEach(d=>{
     const patch = MIGRATION_PATCH_V2.dprs[d.id];
@@ -745,9 +746,12 @@ async function applyMigrationV2(){
     if(patch){ Object.assign(c, patch); changed = true; }
   });
   if(changed){
-    await saveArr('works', DB.works);
     await saveArr('dprs', DB.dprs);
     await saveArr('components', DB.components);
+    for(const id of workIdsToSync){
+      const w = DB.works.find(x=>x.id===id);
+      if(w) await saveWorkItem(w, false);
+    }
   }
   try{ await window.storage.set('migrationV2Applied', JSON.stringify({applied:true}), SHARED); }catch(e){}
 }
@@ -755,9 +759,11 @@ async function applyMigrationV3(){
   const flag = await loadArr('migrationV3Applied');
   if(flag && flag.applied) return;
   let changed = false;
+  const updateIds = new Set();
+  const createIds = new Set();
   DB.works.forEach(w=>{
     const patch = MIGRATION_PATCH_V3.works[w.id];
-    if(patch){ Object.assign(w, patch); changed = true; }
+    if(patch){ Object.assign(w, patch); changed = true; updateIds.add(w.id); }
   });
   DB.dprs.forEach(d=>{
     const patch = MIGRATION_PATCH_V3.dprs[d.id];
@@ -768,12 +774,19 @@ async function applyMigrationV3(){
     if(patch){ Object.assign(c, patch); changed = true; }
   });
   (MIGRATION_PATCH_V3.newWorks||[]).forEach(nw=>{
-    if(!DB.works.find(w=>w.id===nw.id)){ DB.works.push(deepClone(nw)); changed = true; }
+    if(!DB.works.find(w=>w.id===nw.id)){ DB.works.push(deepClone(nw)); changed = true; createIds.add(nw.id); }
   });
   if(changed){
-    await saveArr('works', DB.works);
     await saveArr('dprs', DB.dprs);
     await saveArr('components', DB.components);
+    for(const id of updateIds){
+      const w = DB.works.find(x=>x.id===id);
+      if(w) await saveWorkItem(w, false);
+    }
+    for(const id of createIds){
+      const w = DB.works.find(x=>x.id===id);
+      if(w) await saveWorkItem(w, true);
+    }
   }
   try{ await window.storage.set('migrationV3Applied', JSON.stringify({applied:true}), SHARED); }catch(e){}
 }
