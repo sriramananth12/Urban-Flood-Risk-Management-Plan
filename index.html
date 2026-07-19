@@ -460,11 +460,13 @@ async function sheetDbList(prefix){
   return rows.map(r=>r.key).filter(k=> !prefix || (k && k.startsWith(prefix)));
 }
 
+let PERSISTENCE_MODE = 'none'; // 'sheetdb' | 'claude' | 'none' — set in ensureStorage()
 function ensureStorage(){
   // Local layer: Claude's built-in storage if present, else an in-memory fallback.
   let local;
   if(typeof window.storage !== 'undefined' && window.storage && typeof window.storage.get === 'function' && typeof window.storage.set === 'function'){
     local = window.storage;
+    PERSISTENCE_MODE = 'claude';
   } else {
     STORAGE_OK = false;
     local = {
@@ -479,6 +481,7 @@ function ensureStorage(){
     window.storage = local;
     return;
   }
+  PERSISTENCE_MODE = 'sheetdb'; // most collections now sync to your Google Sheet; photos/ganttData stay local only
 
   // SheetDB configured: route small/structured records to your Google Sheet;
   // large blobs and photos stay local. Any SheetDB error (rate limit, network,
@@ -513,7 +516,7 @@ function ensureStorage(){
 }
 ensureStorage();
 function showStorageBanner(){
-  if(STORAGE_OK) return;
+  if(PERSISTENCE_MODE !== 'none') return; // SheetDB or Claude storage is handling persistence — nothing to warn about
   if(document.getElementById('storageBanner')) return;
   const banner = document.createElement('div');
   banner.id = 'storageBanner';
@@ -1840,7 +1843,7 @@ function renderCityEntry(city, host){
         const ok = await saveArr('photos:'+workId, arr); DB.photoCache[workId] = arr;
         e.target.reset();
         if(ok) render();
-        showMsg(ok?'Photo uploaded.':'Could not upload — try again.', ok);
+        showMsg(ok?'Photo uploaded (stays in this browser only — not synced to your Sheet).':'Could not upload — try again.', ok);
       };
       reader.readAsDataURL(file);
     });
@@ -2079,7 +2082,7 @@ function renderCityEntry(city, host){
 }
 function showMsg(text, ok=true){
   const m = document.getElementById('msgBox'); if(!m) return;
-  if(!STORAGE_OK) text += ok ? ' (saved for this session only — see notice above)' : ' (Persistent storage is unavailable in this view — see the notice at the top of the page.)';
+  if(PERSISTENCE_MODE === 'none') text += ok ? ' (saved for this session only — see notice above)' : ' (Persistent storage is unavailable in this view — see the notice at the top of the page.)';
   m.textContent = text; m.className = 'msg show ' + (ok?'ok':'err');
   setTimeout(()=>{ m.classList.remove('show'); }, ok?3200:7000);
 }
